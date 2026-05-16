@@ -46,6 +46,25 @@
   .panel select { max-width:160px; }
   .hidden { display:none !important; }
 
+  /* Sign-in widget */
+  #authWidget {
+    position:absolute; top:12px; right:12px; z-index:1000;
+    background:rgba(20,24,30,0.94); color:#e6e8eb;
+    border:1px solid #2a3038; border-radius:10px; padding:6px 10px;
+    font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,0.4);
+    display:flex; align-items:center; gap:8px;
+  }
+  #authWidget button {
+    background:#222831; color:#e6e8eb; border:1px solid #3a4150;
+    border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer;
+  }
+  #authWidget button:active { background:#2e3540; }
+  #authWidget button:disabled { opacity:0.45; cursor:not-allowed; }
+  #authWidget .dot {
+    width:8px; height:8px; border-radius:50%;
+    background:#7cc4ff; display:inline-block;
+  }
+
   .leaflet-popup-content-wrapper { background:#1a1d22; color:#e6e8eb; }
   .leaflet-popup-tip { background:#1a1d22; }
   .leaflet-control-attribution { font-size:10px; max-width:60vw; }
@@ -61,6 +80,12 @@
 </head>
 <body>
 <div id="map"></div>
+
+<!-- Auth widget -->
+<div id="authWidget" class="hidden">
+  <span id="authStatus"></span>
+  <button id="authBtn">Sign in</button>
+</div>
 
 <div class="bl">
   <!-- Path-drawing panel (shown only in path mode) -->
@@ -272,10 +297,296 @@
     updateStats();
   }
 
-  // ---------- Save / load (localStorage) ----------
+  // ---------- Google Identity Services ----------
+  const GIS_CLIENT_ID = '740964302491-053r5inogfui83368ftrmh1fqo2ph171.apps.googleusercontent.com';
+  const GIS_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const TOKEN_KEY = 'gis_token';
+  const TOKEN_EXPIRY_KEY = 'gis_token_expiry';
+
+  let gisLoaded = false;
+  let tokenClient = null;
+  let accessToken = null;
+
+  function loadGIS() {
+    return new Promise((resolve) => {
+      if (window.google?.accounts?.oauth2) {
+        gisLoaded = true;
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.onload = () => {
+        gisLoaded = true;
+        resolve(true);
+      };
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+  }
+
+  function getStoredToken() {
+    try {
+      const token = sessionStorage.getItem(TOKEN_KEY);
+      const expiry = sessionStorage.getItem(TOKEN_EXPIRY_KEY);
+      if (token && expiry && Date.now() < parseInt(expiry, 10)) {
+        return token;
+      }
+    } catch {}
+    return null;
+  }
+
+  function storeToken(token, expiresIn) {
+    try {
+      const expiry = Date.now() + (expiresIn * 1000);
+      sessionStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
+    } catch {}
+  }
+
+  function clearToken() {
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+    } catch {}
+    accessToken = null;
+  }
+
+  async function requestToken(silent = false) {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: GIS_CLIENT_ID,
+          scope: GIS_SCOPE,
+          callback: (response) => {
+            if (response.error) {
+              reject(new Error(response.error));
+              return;
+            }
+            accessToken = response.access_token;
+            storeToken(accessToken, response.expires_in || 3600);
+            resolve(accessToken);
+          },
+        });
+      }
+      tokenClient.requestAccessToken({ prompt: silent ? '' : 'consent' });
+    });
+  }
+
+  async function ensureToken() {
+    if (accessToken) return accessToken;
+    const stored = getStoredToken();
+    if (stored) {
+      accessToken = stored;
+      return accessToken;
+    }
+    try {
+      return await requestToken(true);
+    } catch {
+      return await requestToken(false);
+    }
+  }
+
+  async function signIn() {
+    try {
+      await ensureToken();
+      await checkMigration();
+      updateAuthUI();
+      await refreshSavedSelect();
+      toast('Signed in to Google Drive');
+    } catch (e) {
+      toast('Sign-in failed: ' + e.message);
+    }
+  }
+
+  function signOut() {
+    clearToken();
+    updateAuthUI();
+    refreshSavedSelect();
+    toast('Signed out');
+  }
+
+  function updateAuthUI() {
+    const widget = document.getElementById('authWidget');
+    const status = document.getElementById('authStatus');
+    const btn = document.getElementById('authBtn');
+
+    if (accessToken) {
+      status.innerHTML = '<span class="dot"></span> Google Drive';
+      btn.textContent = 'Sign out';
+      btn.onclick = signOut;
+    } else {
+      status.textContent = 'Local only';
+      btn.textContent = 'Sign in';
+      btn.onclick = signIn;
+      btn.disabled = !gisLoaded;
+      if (!gisLoaded) btn.title = 'Google sign-in unavailable';
+    }
+  }
+
+  // ---------- Drive API ----------
+  async function driveRequest(url, options = {}) {
+    const token = await ensureToken();
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      ...options.headers
+    };
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      clearToken();
+      updateAuthUI();
+      throw new Error('Authorization expired, please sign in again');
+    }
+    if (!response.ok) {
+      throw new Error(`Drive API error: ${response.status}`);
+    }
+    return response;
+  }
+
+  async function driveListRoutes() {
+    const response = await driveRequest(
+      'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,modifiedTime,appProperties)&pageSize=100'
+    );
+    const data = await response.json();
+    return (data.files || []).map(f => ({
+      id: f.id,
+      name: f.name.replace(/\.json$/, ''),
+      created: f.appProperties?.created || f.modifiedTime
+    }));
+  }
+
+  async function driveGetRoute(id) {
+    const response = await driveRequest(
+      `https://www.googleapis.com/drive/v3/files/${id}?alt=media`
+    );
+    return await response.json();
+  }
+
+  async function driveSaveRoute(payload) {
+    const boundary = '-------' + Date.now();
+    const metadata = {
+      name: payload.name + '.json',
+      parents: ['appDataFolder'],
+      mimeType: 'application/json',
+      appProperties: { created: payload.created }
+    };
+    const body = [
+      `--${boundary}`,
+      'Content-Type: application/json; charset=UTF-8',
+      '',
+      JSON.stringify(metadata),
+      `--${boundary}`,
+      'Content-Type: application/json',
+      '',
+      JSON.stringify(payload),
+      `--${boundary}--`
+    ].join('\r\n');
+
+    const response = await driveRequest(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body
+      }
+    );
+    const result = await response.json();
+    return result.id;
+  }
+
+  async function driveDeleteRoute(id) {
+    await driveRequest(
+      `https://www.googleapis.com/drive/v3/files/${id}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ---------- Storage abstraction ----------
   const STORE_KEY = 'hike_routes_v1';
-  function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { return []; } }
-  function saveStore(arr) { localStorage.setItem(STORE_KEY, JSON.stringify(arr)); }
+
+  const localStore = {
+    async list() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        return arr.map(r => ({ id: r.id, name: r.name, created: r.created }));
+      } catch {
+        return [];
+      }
+    },
+    async get(id) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        return arr.find(r => r.id === id);
+      } catch {
+        return null;
+      }
+    },
+    async save(payload) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        arr.push(payload);
+        localStorage.setItem(STORE_KEY, JSON.stringify(arr));
+        return payload.id;
+      } catch (e) {
+        throw new Error('Failed to save to localStorage: ' + e.message);
+      }
+    },
+    async delete(id) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        const filtered = arr.filter(r => r.id !== id);
+        localStorage.setItem(STORE_KEY, JSON.stringify(filtered));
+      } catch (e) {
+        throw new Error('Failed to delete from localStorage: ' + e.message);
+      }
+    },
+    async clear() {
+      localStorage.removeItem(STORE_KEY);
+    }
+  };
+
+  const driveStore = {
+    async list() {
+      return await driveListRoutes();
+    },
+    async get(id) {
+      return await driveGetRoute(id);
+    },
+    async save(payload) {
+      return await driveSaveRoute(payload);
+    },
+    async delete(id) {
+      await driveDeleteRoute(id);
+    }
+  };
+
+  function getStore() {
+    return accessToken ? driveStore : localStore;
+  }
+
+  // ---------- Migration ----------
+  async function checkMigration() {
+    if (!accessToken) return;
+    const localRoutes = await localStore.list();
+    if (localRoutes.length === 0) return;
+    const driveRoutes = await driveStore.list();
+    if (driveRoutes.length > 0) return;
+
+    const msg = `Upload ${localRoutes.length} local route${localRoutes.length > 1 ? 's' : ''} to Google Drive?`;
+    if (!confirm(msg)) return;
+
+    toast('Migrating routes to Drive…');
+    try {
+      for (const meta of localRoutes) {
+        const full = await localStore.get(meta.id);
+        if (full) await driveStore.save(full);
+      }
+      await localStore.clear();
+      toast(`Migrated ${localRoutes.length} route${localRoutes.length > 1 ? 's' : ''}`);
+    } catch (e) {
+      toast('Migration failed: ' + e.message);
+    }
+  }
 
   function currentRoutePayload(name) {
     const allCoords = [];
@@ -295,13 +606,17 @@
     };
   }
 
-  function refreshSavedSelect() {
-    const arr = loadStore();
-    savedSelect.innerHTML = '<option value="">Saved routes…</option>' +
-      arr.map(r => {
-        const d = r.stats?.dist ? ' ('+fmtKm(r.stats.dist)+')' : '';
-        return `<option value="${r.id}">${escapeHtml(r.name)}${d}</option>`;
-      }).join('');
+  async function refreshSavedSelect() {
+    try {
+      const store = getStore();
+      const routes = await store.list();
+      savedSelect.innerHTML = '<option value="">Saved routes…</option>' +
+        routes.map(r => {
+          return `<option value="${r.id}">${escapeHtml(r.name)}</option>`;
+        }).join('');
+    } catch (e) {
+      toast('Failed to load routes: ' + e.message);
+    }
     onSavedSelectChange();
   }
   function escapeHtml(s) { return s.replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
@@ -313,17 +628,24 @@
     hideBtn.disabled = !savedLayer;
   }
 
-  function showSaved(id) {
+  async function showSaved(id) {
     hideSaved();
-    const arr = loadStore();
-    const r = arr.find(x=>x.id===id);
-    if (!r) return;
-    const latlngs = r.coords.map(c=>[c[0],c[1]]);
-    savedLayer = L.polyline(latlngs, { color:'#7cc4ff', weight:5, opacity:0.9 }).addTo(map);
-    savedShownId = id;
-    map.fitBounds(savedLayer.getBounds(), { padding:[40,40] });
-    toast(`${r.name} · ${fmtKm(r.stats.dist)} · ↑${Math.round(r.stats.ascent)} m`);
-    onSavedSelectChange();
+    try {
+      const store = getStore();
+      const r = await store.get(id);
+      if (!r) {
+        toast('Route not found');
+        return;
+      }
+      const latlngs = r.coords.map(c=>[c[0],c[1]]);
+      savedLayer = L.polyline(latlngs, { color:'#7cc4ff', weight:5, opacity:0.9 }).addTo(map);
+      savedShownId = id;
+      map.fitBounds(savedLayer.getBounds(), { padding:[40,40] });
+      toast(`${r.name} · ${fmtKm(r.stats.dist)} · ↑${Math.round(r.stats.ascent)} m`);
+      onSavedSelectChange();
+    } catch (e) {
+      toast('Failed to load route: ' + e.message);
+    }
   }
   function hideSaved() {
     if (savedLayer) { map.removeLayer(savedLayer); savedLayer = null; }
@@ -346,30 +668,39 @@
 
   undoBtn.onclick = undo;
   clearBtn.onclick = () => { if (confirm('Clear current path?')) clearAll(); };
-  saveBtn.onclick = () => {
+  saveBtn.onclick = async () => {
     const name = prompt('Name this route:', 'Hike ' + new Date().toLocaleDateString());
     if (!name) return;
-    const arr = loadStore();
-    arr.push(currentRoutePayload(name.trim()));
-    saveStore(arr);
-    toast('Saved: ' + name);
-    refreshSavedSelect();
-    clearAll();
-    setMode('normal');
+    const payload = currentRoutePayload(name.trim());
+    try {
+      const store = getStore();
+      await store.save(payload);
+      toast('Saved: ' + name);
+      await refreshSavedSelect();
+      clearAll();
+      setMode('normal');
+    } catch (e) {
+      toast('Failed to save: ' + e.message);
+    }
   };
 
   savedSelect.onchange = onSavedSelectChange;
   loadBtn.onclick = () => showSaved(savedSelect.value);
   hideBtn.onclick = hideSaved;
-  delBtn.onclick = () => {
-    const id = savedSelect.value; if (!id) return;
-    const arr = loadStore();
-    const r = arr.find(x=>x.id===id);
-    if (!r || !confirm('Delete "'+r.name+'"?')) return;
-    saveStore(arr.filter(x=>x.id!==id));
-    if (savedShownId === id) hideSaved();
-    refreshSavedSelect();
-    toast('Deleted');
+  delBtn.onclick = async () => {
+    const id = savedSelect.value;
+    if (!id) return;
+    try {
+      const store = getStore();
+      const r = await store.get(id);
+      if (!r || !confirm('Delete "'+r.name+'"?')) return;
+      await store.delete(id);
+      if (savedShownId === id) hideSaved();
+      await refreshSavedSelect();
+      toast('Deleted');
+    } catch (e) {
+      toast('Failed to delete: ' + e.message);
+    }
   };
 
   map.on('click', async (e) => {
@@ -391,9 +722,23 @@
   });
 
   // ---------- Init ----------
-  setMode('normal');
-  updateStats();
-  refreshSavedSelect();
+  (async () => {
+    setMode('normal');
+    updateStats();
+
+    // Load GIS and restore token if available
+    const loaded = await loadGIS();
+    const authWidget = document.getElementById('authWidget');
+    authWidget.classList.remove('hidden');
+
+    if (loaded) {
+      const stored = getStoredToken();
+      if (stored) accessToken = stored;
+    }
+
+    updateAuthUI();
+    await refreshSavedSelect();
+  })();
 </script>
 </body>
 </html>
