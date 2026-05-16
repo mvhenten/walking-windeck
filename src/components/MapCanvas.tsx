@@ -1,0 +1,192 @@
+import { useEffect } from 'react';
+import {
+  MapContainer,
+  TileLayer,
+  LayersControl,
+  ScaleControl,
+  Polyline,
+  CircleMarker,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix Leaflet icon issue with bundlers
+delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+interface MapCanvasProps {
+  center: [number, number];
+  zoom: number;
+  onMapClick?: (latlng: L.LatLng) => void;
+  waypoints: [number, number][]; // [lng, lat]
+  segments: Array<{
+    coords: [number, number, number | null][]; // [lat, lng, ele]
+  }>;
+  savedRoute: [number, number][] | null; // [lat, lng]
+}
+
+function LocateControl() {
+  const map = useMap();
+
+  useEffect(() => {
+    const LocateControl = L.Control.extend({
+      options: {
+        position: 'topleft',
+      },
+      onAdd: function (mapInstance: L.Map) {
+        const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const link = L.DomUtil.create('a', '', div);
+        link.innerHTML = '◎';
+        link.href = '#';
+        link.title = 'Locate me';
+        link.style.fontSize = '20px';
+        link.style.width = '30px';
+        link.style.height = '30px';
+        link.style.lineHeight = '30px';
+        link.style.textAlign = 'center';
+
+        L.DomEvent.on(link, 'click', (e: Event) => {
+          L.DomEvent.preventDefault(e);
+          mapInstance.locate({
+            setView: true,
+            maxZoom: 16,
+            enableHighAccuracy: true,
+          });
+        });
+
+        return div;
+      },
+    });
+
+    const locateControl = new LocateControl();
+    locateControl.addTo(map);
+
+    map.on('locationfound', (e: L.LocationEvent) => {
+      L.circleMarker(e.latlng, {
+        radius: 8,
+        color: '#7cc4ff',
+        fillColor: '#7cc4ff',
+        fillOpacity: 0.8,
+      }).addTo(map);
+    });
+
+    return () => {
+      locateControl.remove();
+    };
+  }, [map]);
+
+  return null;
+}
+
+function MapClickHandler({ onClick }: { onClick?: (latlng: L.LatLng) => void }) {
+  useMapEvents({
+    click: (e) => {
+      if (onClick) {
+        onClick(e.latlng);
+      }
+    },
+  });
+  return null;
+}
+
+export function MapCanvas({
+  center,
+  zoom,
+  onMapClick,
+  waypoints,
+  segments,
+  savedRoute,
+}: MapCanvasProps) {
+  return (
+    <MapContainer center={center} zoom={zoom} zoomControl={true} className="absolute inset-0">
+      <LayersControl position="topright">
+        <LayersControl.BaseLayer checked name="OpenTopoMap (contours)">
+          <TileLayer
+            url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+            maxZoom={17}
+            attribution='© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA), © OSM'
+          />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="OSM standard">
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
+            attribution="© OSM"
+          />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="CyclOSM (paths)">
+          <TileLayer
+            url="https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
+            maxZoom={20}
+            subdomains={['a', 'b', 'c']}
+            attribution="CyclOSM | © OSM"
+          />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Satellite">
+          <TileLayer
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
+            attribution="Imagery © Esri"
+          />
+        </LayersControl.BaseLayer>
+        <LayersControl.Overlay checked name="Hiking routes">
+          <TileLayer
+            url="https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png"
+            maxZoom={18}
+            opacity={0.85}
+            attribution='<a href="https://hiking.waymarkedtrails.org">Waymarked Trails</a>'
+          />
+        </LayersControl.Overlay>
+      </LayersControl>
+
+      <ScaleControl imperial={false} />
+      <LocateControl />
+      <MapClickHandler onClick={onMapClick} />
+
+      {/* Draw mode: waypoints and segments */}
+      {waypoints.map((wp, i) => (
+        <CircleMarker
+          key={`wp-${i}`}
+          center={[wp[1], wp[0]]}
+          radius={6}
+          pathOptions={{
+            color: '#1a1d22',
+            weight: 2,
+            fillColor: '#b48cf2',
+            fillOpacity: 1,
+          }}
+        />
+      ))}
+
+      {segments.map((seg, i) => (
+        <Polyline
+          key={`seg-${i}`}
+          positions={seg.coords.map((c) => [c[0], c[1]])}
+          pathOptions={{
+            color: '#b48cf2',
+            weight: 5,
+            opacity: 0.9,
+          }}
+        />
+      ))}
+
+      {/* Saved route */}
+      {savedRoute && (
+        <Polyline
+          positions={savedRoute}
+          pathOptions={{
+            color: '#7cc4ff',
+            weight: 5,
+            opacity: 0.9,
+          }}
+        />
+      )}
+    </MapContainer>
+  );
+}

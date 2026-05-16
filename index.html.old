@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="color-scheme" content="dark light">
+<title>Hike map — Dreisel / Windeck</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css">
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#11141a; color:#e6e8eb;
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #map { position:absolute; inset:0; }
+
+  /* Bottom-left stack */
+  .bl {
+    position:absolute; left:12px; bottom:max(12px, env(safe-area-inset-bottom));
+    z-index:1000; display:flex; flex-direction:column; gap:8px; align-items:flex-start;
+    max-width: calc(100vw - 24px);
+  }
+  .fab {
+    width:52px; height:52px; border-radius:50%;
+    background:#1a1d22; color:#e6e8eb; border:1px solid #3a4150;
+    font-size:28px; line-height:1; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 14px rgba(0,0,0,0.5); cursor:pointer; user-select:none;
+  }
+  .fab.active { background:#b48cf2; color:#1a1d22; border-color:#b48cf2; }
+  .fab:active { transform:scale(0.95); }
+
+  .panel {
+    background:rgba(20,24,30,0.94); color:#e6e8eb;
+    border:1px solid #2a3038; border-radius:10px; padding:8px 10px;
+    font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,0.4);
+    max-width: calc(100vw - 24px);
+  }
+  .panel .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .panel .stats { padding:4px 2px 6px; color:#e6e8eb; min-width:200px; }
+  .panel .stats b { color:#b48cf2; }
+  .panel button, .panel select {
+    background:#222831; color:#e6e8eb; border:1px solid #3a4150;
+    border-radius:6px; padding:5px 10px; font-size:13px; cursor:pointer;
+  }
+  .panel button:active { background:#2e3540; }
+  .panel button.primary { background:#7cc4ff; color:#0d1015; border-color:#7cc4ff; font-weight:600; }
+  .panel button:disabled { opacity:0.45; cursor:not-allowed; }
+  .panel select { max-width:160px; }
+  .hidden { display:none !important; }
+
+  /* Sign-in widget */
+  #authWidget {
+    position:absolute; top:12px; right:12px; z-index:1000;
+    background:rgba(20,24,30,0.94); color:#e6e8eb;
+    border:1px solid #2a3038; border-radius:10px; padding:6px 10px;
+    font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,0.4);
+    display:flex; align-items:center; gap:8px;
+  }
+  #authWidget button {
+    background:#222831; color:#e6e8eb; border:1px solid #3a4150;
+    border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer;
+  }
+  #authWidget button:active { background:#2e3540; }
+  #authWidget button:disabled { opacity:0.45; cursor:not-allowed; }
+  #authWidget .dot {
+    width:8px; height:8px; border-radius:50%;
+    background:#7cc4ff; display:inline-block;
+  }
+
+  .leaflet-popup-content-wrapper { background:#1a1d22; color:#e6e8eb; }
+  .leaflet-popup-tip { background:#1a1d22; }
+  .leaflet-control-attribution { font-size:10px; max-width:60vw; }
+
+  .toast {
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    background:#1a1d22; color:#e6e8eb; padding:8px 14px;
+    border:1px solid #3a4150; border-radius:8px; z-index:2000;
+    font-size:13px; opacity:0; transition:opacity 0.25s; pointer-events:none;
+  }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- Auth widget -->
+<div id="authWidget" class="hidden">
+  <span id="authStatus"></span>
+  <button id="authBtn">Sign in</button>
+</div>
+
+<div class="bl">
+  <!-- Path-drawing panel (shown only in path mode) -->
+  <div class="panel hidden" id="drawPanel">
+    <div class="stats" id="stats">Tap the map to start drawing.</div>
+    <div class="row">
+      <button id="undoBtn" disabled>↶ Undo</button>
+      <button id="clearBtn" disabled>Clear</button>
+      <button id="saveBtn" class="primary" disabled>Save</button>
+    </div>
+  </div>
+
+  <!-- Saved-routes panel (shown only in normal mode) -->
+  <div class="panel" id="savedPanel">
+    <div class="row">
+      <select id="savedSelect"><option value="">Saved routes…</option></select>
+      <button id="loadBtn" disabled>Show</button>
+      <button id="hideBtn" disabled>Hide</button>
+      <button id="delBtn" disabled>Delete</button>
+    </div>
+  </div>
+
+  <!-- FAB: + (enter path mode) / × (exit) -->
+  <div class="fab" id="modeFab" title="Draw path">+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
+<script>
+  // ---------- Map ----------
+  const map = L.map('map', { zoomControl: true }).setView([50.7826, 7.6566], 14);
+
+  const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17, attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA), © OSM'
+  });
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OSM'
+  });
+  const cyclosm = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+    maxZoom: 20, subdomains:'abc', attribution: 'CyclOSM | © OSM'
+  });
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: 'Imagery © Esri'
+  });
+  const hiking = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {
+    maxZoom: 18, opacity: 0.85, attribution: '<a href="https://hiking.waymarkedtrails.org">Waymarked Trails</a>'
+  });
+
+  topo.addTo(map);
+  hiking.addTo(map);
+
+  L.control.layers(
+    { 'OpenTopoMap (contours)': topo, 'OSM standard': osm, 'CyclOSM (paths)': cyclosm, 'Satellite': sat },
+    { 'Hiking routes': hiking },
+    { collapsed: true }
+  ).addTo(map);
+
+  L.control.scale({ imperial:false }).addTo(map);
+  L.control.locate({
+    setView:'untilPan', keepCurrentZoomLevel:true, showPopup:false,
+    locateOptions:{ enableHighAccuracy:true, maxZoom:16 }
+  }).addTo(map);
+
+  // ---------- Toast ----------
+  const toastEl = document.getElementById('toast');
+  let toastT = null;
+  function toast(msg, ms=2200) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastT);
+    toastT = setTimeout(()=> toastEl.classList.remove('show'), ms);
+  }
+
+  // ---------- Geometry helpers ----------
+  function haversine(a, b) {
+    const R=6371000, toR=x=>x*Math.PI/180;
+    const dLat=toR(b[0]-a[0]), dLng=toR(b[1]-a[1]);
+    const s=Math.sin(dLat/2)**2 + Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLng/2)**2;
+    return 2*R*Math.asin(Math.sqrt(s));
+  }
+  function fmtKm(m) { return m<1000 ? Math.round(m)+' m' : (m/1000).toFixed(2)+' km'; }
+
+  // ---------- BRouter routing ----------
+  // Returns { coords: [[lat,lng,ele?]], dist, ascent, descent }
+  async function routeBetween(fromLngLat, toLngLat) {
+    const url = `https://brouter.de/brouter?lonlats=${fromLngLat[0]},${fromLngLat[1]}|${toLngLat[0]},${toLngLat[1]}` +
+                `&profile=hiking-mountain&alternativeidx=0&format=geojson`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('routing failed: ' + r.status);
+    const gj = await r.json();
+    const feat = gj.features?.[0];
+    if (!feat) throw new Error('no route');
+    const coords = feat.geometry.coordinates.map(c => [c[1], c[0], c[2] ?? null]); // -> [lat,lng,ele]
+    const props = feat.properties || {};
+    const dist = Number(props['track-length']) || 0;
+    const ascent = Number(props['filtered ascend'] ?? props['plain-ascend']) || 0;
+    // descent is not directly given; compute from elevations
+    let descent = 0;
+    for (let i=1; i<coords.length; i++) {
+      const a = coords[i-1][2], b = coords[i][2];
+      if (a!=null && b!=null && b<a) descent += (a-b);
+    }
+    return { coords, dist, ascent, descent };
+  }
+
+  // ---------- State ----------
+  let mode = 'normal';                  // 'normal' | 'draw'
+  let waypoints = [];                    // [[lng,lat]]
+  let wpMarkers = [];                    // L.circleMarker per waypoint
+  let segments = [];                     // [{poly, dist, ascent, descent, coords:[[lat,lng,ele]]}]
+  let drawing = false;                   // routing in progress
+  let savedLayer = null;                 // currently displayed saved route layer
+  let savedShownId = null;
+
+  // ---------- UI refs ----------
+  const fab = document.getElementById('modeFab');
+  const drawPanel = document.getElementById('drawPanel');
+  const savedPanel = document.getElementById('savedPanel');
+  const statsEl = document.getElementById('stats');
+  const undoBtn = document.getElementById('undoBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const savedSelect = document.getElementById('savedSelect');
+  const loadBtn = document.getElementById('loadBtn');
+  const hideBtn = document.getElementById('hideBtn');
+  const delBtn = document.getElementById('delBtn');
+
+  function setMode(m) {
+    mode = m;
+    if (m === 'draw') {
+      fab.textContent = '×';
+      fab.classList.add('active');
+      fab.title = 'Exit draw mode';
+      drawPanel.classList.remove('hidden');
+      savedPanel.classList.add('hidden');
+    } else {
+      fab.textContent = '+';
+      fab.classList.remove('active');
+      fab.title = 'Draw path';
+      drawPanel.classList.add('hidden');
+      savedPanel.classList.remove('hidden');
+    }
+  }
+
+  function updateStats() {
+    let dist=0, asc=0, desc=0;
+    for (const s of segments) { dist+=s.dist; asc+=s.ascent; desc+=s.descent; }
+    if (waypoints.length === 0) {
+      statsEl.textContent = 'Tap the map to start drawing.';
+    } else if (segments.length === 0) {
+      statsEl.innerHTML = `1 point · tap again to route along paths.`;
+    } else {
+      statsEl.innerHTML = `<b>${fmtKm(dist)}</b> · ↑ ${Math.round(asc)} m · ↓ ${Math.round(desc)} m · ${waypoints.length} pts`;
+    }
+    undoBtn.disabled = waypoints.length === 0;
+    clearBtn.disabled = waypoints.length === 0;
+    saveBtn.disabled = segments.length === 0;
+  }
+
+  function addWaypointMarker(lngLat) {
+    const m = L.circleMarker([lngLat[1], lngLat[0]], {
+      radius:6, color:'#1a1d22', weight:2, fillColor:'#b48cf2', fillOpacity:1
+    }).addTo(map);
+    wpMarkers.push(m);
+  }
+
+  async function onDrawTap(latlng) {
+    if (drawing) return;
+    const lngLat = [latlng.lng, latlng.lat];
+
+    if (waypoints.length === 0) {
+      waypoints.push(lngLat);
+      addWaypointMarker(lngLat);
+      updateStats();
+      return;
+    }
+    drawing = true;
+    statsEl.textContent = 'Routing…';
+    try {
+      const prev = waypoints[waypoints.length - 1];
+      const seg = await routeBetween(prev, lngLat);
+      const poly = L.polyline(seg.coords.map(c=>[c[0],c[1]]), {
+        color:'#b48cf2', weight:5, opacity:0.9
+      }).addTo(map);
+      segments.push({ poly, dist:seg.dist, ascent:seg.ascent, descent:seg.descent, coords:seg.coords });
+      waypoints.push(lngLat);
+      addWaypointMarker(lngLat);
+    } catch (e) {
+      toast('Routing failed: ' + e.message);
+    } finally {
+      drawing = false;
+      updateStats();
+    }
+  }
+
+  function undo() {
+    if (waypoints.length === 0) return;
+    waypoints.pop();
+    const m = wpMarkers.pop(); if (m) map.removeLayer(m);
+    const s = segments.pop();  if (s) map.removeLayer(s.poly);
+    updateStats();
+  }
+  function clearAll() {
+    waypoints = [];
+    wpMarkers.forEach(m=>map.removeLayer(m)); wpMarkers = [];
+    segments.forEach(s=>map.removeLayer(s.poly)); segments = [];
+    updateStats();
+  }
+
+  // ---------- Google Identity Services ----------
+  const GIS_CLIENT_ID = '740964302491-053r5inogfui83368ftrmh1fqo2ph171.apps.googleusercontent.com';
+  const GIS_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const TOKEN_KEY = 'gis_token';
+  const TOKEN_EXPIRY_KEY = 'gis_token_expiry';
+
+  let gisLoaded = false;
+  let tokenClient = null;
+  let accessToken = null;
+
+  function loadGIS() {
+    return new Promise((resolve) => {
+      if (window.google?.accounts?.oauth2) {
+        gisLoaded = true;
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.onload = () => {
+        gisLoaded = true;
+        resolve(true);
+      };
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+  }
+
+  function getStoredToken() {
+    try {
+      const token = sessionStorage.getItem(TOKEN_KEY);
+      const expiry = sessionStorage.getItem(TOKEN_EXPIRY_KEY);
+      if (token && expiry && Date.now() < parseInt(expiry, 10)) {
+        return token;
+      }
+    } catch {}
+    return null;
+  }
+
+  function storeToken(token, expiresIn) {
+    try {
+      const expiry = Date.now() + (expiresIn * 1000);
+      sessionStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
+    } catch {}
+  }
+
+  function clearToken() {
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+    } catch {}
+    accessToken = null;
+  }
+
+  async function requestToken(silent = false) {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: GIS_CLIENT_ID,
+          scope: GIS_SCOPE,
+          callback: (response) => {
+            if (response.error) {
+              reject(new Error(response.error));
+              return;
+            }
+            accessToken = response.access_token;
+            storeToken(accessToken, response.expires_in || 3600);
+            resolve(accessToken);
+          },
+        });
+      }
+      tokenClient.requestAccessToken({ prompt: silent ? '' : 'consent' });
+    });
+  }
+
+  async function ensureToken() {
+    if (accessToken) return accessToken;
+    const stored = getStoredToken();
+    if (stored) {
+      accessToken = stored;
+      return accessToken;
+    }
+    try {
+      return await requestToken(true);
+    } catch {
+      return await requestToken(false);
+    }
+  }
+
+  async function signIn() {
+    try {
+      await ensureToken();
+      await checkMigration();
+      updateAuthUI();
+      await refreshSavedSelect();
+      toast('Signed in to Google Drive');
+    } catch (e) {
+      toast('Sign-in failed: ' + e.message);
+    }
+  }
+
+  function signOut() {
+    clearToken();
+    updateAuthUI();
+    refreshSavedSelect();
+    toast('Signed out');
+  }
+
+  function updateAuthUI() {
+    const widget = document.getElementById('authWidget');
+    const status = document.getElementById('authStatus');
+    const btn = document.getElementById('authBtn');
+
+    if (accessToken) {
+      status.innerHTML = '<span class="dot"></span> Google Drive';
+      btn.textContent = 'Sign out';
+      btn.onclick = signOut;
+    } else {
+      status.textContent = 'Local only';
+      btn.textContent = 'Sign in';
+      btn.onclick = signIn;
+      btn.disabled = !gisLoaded;
+      if (!gisLoaded) btn.title = 'Google sign-in unavailable';
+    }
+  }
+
+  // ---------- Drive API ----------
+  async function driveRequest(url, options = {}) {
+    const token = await ensureToken();
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      ...options.headers
+    };
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      clearToken();
+      updateAuthUI();
+      throw new Error('Authorization expired, please sign in again');
+    }
+    if (!response.ok) {
+      throw new Error(`Drive API error: ${response.status}`);
+    }
+    return response;
+  }
+
+  async function driveListRoutes() {
+    const response = await driveRequest(
+      'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,modifiedTime,appProperties)&pageSize=100'
+    );
+    const data = await response.json();
+    return (data.files || []).map(f => ({
+      id: f.id,
+      name: f.name.replace(/\.json$/, ''),
+      created: f.appProperties?.created || f.modifiedTime
+    }));
+  }
+
+  async function driveGetRoute(id) {
+    const response = await driveRequest(
+      `https://www.googleapis.com/drive/v3/files/${id}?alt=media`
+    );
+    return await response.json();
+  }
+
+  async function driveSaveRoute(payload) {
+    const boundary = '-------' + Date.now();
+    const metadata = {
+      name: payload.name + '.json',
+      parents: ['appDataFolder'],
+      mimeType: 'application/json',
+      appProperties: { created: payload.created }
+    };
+    const body = [
+      `--${boundary}`,
+      'Content-Type: application/json; charset=UTF-8',
+      '',
+      JSON.stringify(metadata),
+      `--${boundary}`,
+      'Content-Type: application/json',
+      '',
+      JSON.stringify(payload),
+      `--${boundary}--`
+    ].join('\r\n');
+
+    const response = await driveRequest(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body
+      }
+    );
+    const result = await response.json();
+    return result.id;
+  }
+
+  async function driveDeleteRoute(id) {
+    await driveRequest(
+      `https://www.googleapis.com/drive/v3/files/${id}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ---------- Storage abstraction ----------
+  const STORE_KEY = 'hike_routes_v1';
+
+  const localStore = {
+    async list() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        return arr.map(r => ({ id: r.id, name: r.name, created: r.created }));
+      } catch {
+        return [];
+      }
+    },
+    async get(id) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        return arr.find(r => r.id === id);
+      } catch {
+        return null;
+      }
+    },
+    async save(payload) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        arr.push(payload);
+        localStorage.setItem(STORE_KEY, JSON.stringify(arr));
+        return payload.id;
+      } catch (e) {
+        throw new Error('Failed to save to localStorage: ' + e.message);
+      }
+    },
+    async delete(id) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+        const filtered = arr.filter(r => r.id !== id);
+        localStorage.setItem(STORE_KEY, JSON.stringify(filtered));
+      } catch (e) {
+        throw new Error('Failed to delete from localStorage: ' + e.message);
+      }
+    },
+    async clear() {
+      localStorage.removeItem(STORE_KEY);
+    }
+  };
+
+  const driveStore = {
+    async list() {
+      return await driveListRoutes();
+    },
+    async get(id) {
+      return await driveGetRoute(id);
+    },
+    async save(payload) {
+      return await driveSaveRoute(payload);
+    },
+    async delete(id) {
+      await driveDeleteRoute(id);
+    }
+  };
+
+  function getStore() {
+    return accessToken ? driveStore : localStore;
+  }
+
+  // ---------- Migration ----------
+  async function checkMigration() {
+    if (!accessToken) return;
+    const localRoutes = await localStore.list();
+    if (localRoutes.length === 0) return;
+    const driveRoutes = await driveStore.list();
+    if (driveRoutes.length > 0) return;
+
+    const msg = `Upload ${localRoutes.length} local route${localRoutes.length > 1 ? 's' : ''} to Google Drive?`;
+    if (!confirm(msg)) return;
+
+    toast('Migrating routes to Drive…');
+    try {
+      for (const meta of localRoutes) {
+        const full = await localStore.get(meta.id);
+        if (full) await driveStore.save(full);
+      }
+      await localStore.clear();
+      toast(`Migrated ${localRoutes.length} route${localRoutes.length > 1 ? 's' : ''}`);
+    } catch (e) {
+      toast('Migration failed: ' + e.message);
+    }
+  }
+
+  function currentRoutePayload(name) {
+    const allCoords = [];
+    segments.forEach((s, i) => {
+      // skip first coord of each segment except the first (avoid dupes)
+      s.coords.forEach((c, j) => { if (i===0 || j>0) allCoords.push(c); });
+    });
+    let dist=0, asc=0, desc=0;
+    for (const s of segments) { dist+=s.dist; asc+=s.ascent; desc+=s.descent; }
+    return {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      name,
+      created: new Date().toISOString(),
+      waypoints,
+      coords: allCoords,         // [[lat,lng,ele]]
+      stats: { dist, ascent: asc, descent: desc }
+    };
+  }
+
+  async function refreshSavedSelect() {
+    try {
+      const store = getStore();
+      const routes = await store.list();
+      savedSelect.innerHTML = '<option value="">Saved routes…</option>' +
+        routes.map(r => {
+          return `<option value="${r.id}">${escapeHtml(r.name)}</option>`;
+        }).join('');
+    } catch (e) {
+      toast('Failed to load routes: ' + e.message);
+    }
+    onSavedSelectChange();
+  }
+  function escapeHtml(s) { return s.replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  function onSavedSelectChange() {
+    const has = !!savedSelect.value;
+    loadBtn.disabled = !has || savedSelect.value === savedShownId;
+    delBtn.disabled = !has;
+    hideBtn.disabled = !savedLayer;
+  }
+
+  async function showSaved(id) {
+    hideSaved();
+    try {
+      const store = getStore();
+      const r = await store.get(id);
+      if (!r) {
+        toast('Route not found');
+        return;
+      }
+      const latlngs = r.coords.map(c=>[c[0],c[1]]);
+      savedLayer = L.polyline(latlngs, { color:'#7cc4ff', weight:5, opacity:0.9 }).addTo(map);
+      savedShownId = id;
+      map.fitBounds(savedLayer.getBounds(), { padding:[40,40] });
+      toast(`${r.name} · ${fmtKm(r.stats.dist)} · ↑${Math.round(r.stats.ascent)} m`);
+      onSavedSelectChange();
+    } catch (e) {
+      toast('Failed to load route: ' + e.message);
+    }
+  }
+  function hideSaved() {
+    if (savedLayer) { map.removeLayer(savedLayer); savedLayer = null; }
+    savedShownId = null;
+    onSavedSelectChange();
+  }
+
+  // ---------- Events ----------
+  fab.addEventListener('click', () => {
+    if (mode === 'normal') {
+      setMode('draw');
+      toast('Path mode: tap to add points');
+    } else {
+      // Exit: prompt if unsaved
+      if (segments.length > 0 && !confirm('Exit without saving current path?')) return;
+      clearAll();
+      setMode('normal');
+    }
+  });
+
+  undoBtn.onclick = undo;
+  clearBtn.onclick = () => { if (confirm('Clear current path?')) clearAll(); };
+  saveBtn.onclick = async () => {
+    const name = prompt('Name this route:', 'Hike ' + new Date().toLocaleDateString());
+    if (!name) return;
+    const payload = currentRoutePayload(name.trim());
+    try {
+      const store = getStore();
+      await store.save(payload);
+      toast('Saved: ' + name);
+      await refreshSavedSelect();
+      clearAll();
+      setMode('normal');
+    } catch (e) {
+      toast('Failed to save: ' + e.message);
+    }
+  };
+
+  savedSelect.onchange = onSavedSelectChange;
+  loadBtn.onclick = () => showSaved(savedSelect.value);
+  hideBtn.onclick = hideSaved;
+  delBtn.onclick = async () => {
+    const id = savedSelect.value;
+    if (!id) return;
+    try {
+      const store = getStore();
+      const r = await store.get(id);
+      if (!r || !confirm('Delete "'+r.name+'"?')) return;
+      await store.delete(id);
+      if (savedShownId === id) hideSaved();
+      await refreshSavedSelect();
+      toast('Deleted');
+    } catch (e) {
+      toast('Failed to delete: ' + e.message);
+    }
+  };
+
+  map.on('click', async (e) => {
+    if (mode === 'draw') {
+      onDrawTap(e.latlng);
+    } else {
+      // Normal: tap for elevation lookup
+      const { lat, lng } = e.latlng;
+      const popup = L.popup().setLatLng(e.latlng).setContent('Looking up elevation…').openOn(map);
+      try {
+        const r = await fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`);
+        const j = await r.json();
+        const ele = j.results?.[0]?.elevation;
+        popup.setContent(`<b>${ele!=null?Math.round(ele)+' m':'(no data)'}</b><br>${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      } catch {
+        popup.setContent(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
+    }
+  });
+
+  // ---------- Init ----------
+  (async () => {
+    setMode('normal');
+    updateStats();
+
+    // Load GIS and restore token if available
+    const loaded = await loadGIS();
+    const authWidget = document.getElementById('authWidget');
+    authWidget.classList.remove('hidden');
+
+    if (loaded) {
+      const stored = getStoredToken();
+      if (stored) accessToken = stored;
+    }
+
+    updateAuthUI();
+    await refreshSavedSelect();
+  })();
+</script>
+</body>
+</html>
