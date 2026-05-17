@@ -1,4 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" fill="#1a1a1a"/>
-  <text x="256" y="380" font-family="Arial, sans-serif" font-size="380" fill="#e6e8eb" text-anchor="middle" font-weight="bold">M</text>
+
+  <!-- Hill -->
+  <path d="M 0 470 Q 256 380 512 470 L 512 512 L 0 512 Z" fill="#2e2e2e"/>
+
+  <!-- Keep with crenellated battlements -->
+  <g fill="#e6e8eb">
+    <path d="M 140 460
+             L 140 188
+             L 170 188 L 170 152 L 198 152 L 198 188
+             L 230 188 L 230 152 L 258 152 L 258 188
+             L 290 188 L 290 152 L 318 152 L 318 188
+             L 350 188 L 350 152 L 378 152 L 378 188
+             L 378 460 Z"/>
+
+    <!-- Flagpole -->
+    <rect x="146" y="80" width="6" height="80"/>
+  </g>
+
+  <!-- Pennant -->
+  <path d="M 152 88 L 220 100 L 152 116 Z" fill="#b54343"/>
+
+  <!-- Arched gate -->
+  <path d="M 230 460 L 230 396 Q 230 366 259 366 Q 288 366 288 396 L 288 460 Z" fill="#1a1a1a"/>
+
+  <!-- Arrow-slit windows -->
+  <g fill="#1a1a1a">
+    <rect x="178" y="240" width="12" height="40"/>
+    <rect x="253" y="240" width="12" height="40"/>
+    <rect x="328" y="240" width="12" height="40"/>
+  </g>
 </svg>

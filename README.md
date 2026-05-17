@@ -1,6 +1,8 @@
-# matshikes
+# WalkingWindeck
 
 Mobile-friendly hiking map for the hills around Dreisel / Windeck (and anywhere else).
+
+> **Note:** The GitHub repository is named `matshikes` for historical reasons. The app's public-facing name is **WalkingWindeck**.
 
 **Live:** https://mvhenten.github.io/matshikes/
 

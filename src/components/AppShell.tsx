@@ -52,7 +52,7 @@ export function AppShell({ authenticated, children }: AppShellProps) {
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Matshikes</SheetTitle>
+            <SheetTitle>WalkingWindeck</SheetTitle>
           </SheetHeader>
           <Separator className="my-4" />
           <nav className="flex flex-col gap-2">

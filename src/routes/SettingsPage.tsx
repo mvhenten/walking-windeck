@@ -55,7 +55,7 @@ export function SettingsPage() {
           <CardContent>
             <div className="space-y-2 text-sm">
               <div>
-                <strong>Matshikes</strong>
+                <strong>WalkingWindeck</strong>
               </div>
               <div className="text-muted-foreground">Hiking route planner with offline support</div>
               <Separator className="my-4" />

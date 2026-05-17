@@ -20,8 +20,8 @@ export default defineConfig({
         enabled: true,
       },
       manifest: {
-        name: 'Matshikes',
-        short_name: 'Matshikes',
+        name: 'WalkingWindeck',
+        short_name: 'WalkingWindeck',
         description: 'Hiking route planner with offline support',
         theme_color: '#1a1a1a',
         background_color: '#1a1a1a',
