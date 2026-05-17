@@ -3,12 +3,18 @@
 import puppeteer from 'puppeteer';
 import { spawn } from 'child_process';
 import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(__dirname, '..', '..');
 
 const sleep = promisify(setTimeout);
 
 async function testDrawer() {
   console.log('Starting preview server...');
   const server = spawn('npx', ['vite', 'preview', '--port', '4173'], {
+    cwd: repoRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

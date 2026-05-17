@@ -1,5 +1,8 @@
 {
   "name": "screenshots",
   "version": "1.0.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "puppeteer": "^25.0.2"
+  }
 }
