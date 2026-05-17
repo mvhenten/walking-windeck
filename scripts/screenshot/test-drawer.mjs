@@ -165,7 +165,9 @@ async function testDrawer() {
 
     console.log('\n✅ TEST PASSED: Drawer renders and is fully visible');
     console.log(`   - Backdrop: ${backdrop.width}x${backdrop.height}, z-index ${backdrop.zIndex}`);
-    console.log(`   - Panel: ${drawer.width}px wide, left: ${drawer.left}, z-index ${drawer.zIndex}`);
+    console.log(
+      `   - Panel: ${drawer.width}px wide, left: ${drawer.left}, z-index ${drawer.zIndex}`
+    );
     console.log(`   - Content: "${content.text}" is visible`);
   } catch (error) {
     console.error('\n❌ TEST FAILED:', error.message);
