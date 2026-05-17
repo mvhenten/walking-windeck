@@ -1,0 +1,85 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-background: #11141a;
+  --color-foreground: #e6e8eb;
+  --color-card: #1a1d22;
+  --color-card-foreground: #e6e8eb;
+  --color-popover: #1a1d22;
+  --color-popover-foreground: #e6e8eb;
+  --color-primary: #b48cf2;
+  --color-primary-foreground: #1a1d22;
+  --color-secondary: #222831;
+  --color-secondary-foreground: #e6e8eb;
+  --color-muted: #222831;
+  --color-muted-foreground: #9ca3af;
+  --color-accent: #222831;
+  --color-accent-foreground: #e6e8eb;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #e6e8eb;
+  --color-border: #3a4150;
+  --color-input: #3a4150;
+  --color-ring: #b48cf2;
+  --radius: 0.5rem;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Leaflet overrides for dark theme */
+.leaflet-container {
+  background: #11141a;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #1a1d22;
+  color: #e6e8eb;
+}
+
+.leaflet-popup-tip {
+  background: #1a1d22;
+}
+
+.leaflet-control-attribution {
+  font-size: 10px;
+  max-width: 60vw;
+}
+
+.leaflet-bar a {
+  background-color: #1a1d22 !important;
+  color: #e6e8eb !important;
+  border-color: #3a4150 !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: #222831 !important;
+}
+
+.leaflet-control-layers {
+  background: rgba(20, 24, 30, 0.94) !important;
+  border-color: #2a3038 !important;
+  color: #e6e8eb !important;
+}
+
+.leaflet-control-layers-toggle {
+  background-color: #1a1d22 !important;
+}
+
+.leaflet-control-layers label {
+  color: #e6e8eb !important;
+}
