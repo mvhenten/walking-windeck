@@ -41,7 +41,10 @@ interface DialogContentProps {
 export function DialogContent({ className, children }: DialogContentProps) {
   return (
     <div
-      className={cn('w-full max-w-md rounded-lg border bg-card p-6 shadow-lg', className)}
+      className={cn(
+        'mx-4 w-full max-w-md sm:min-w-[360px] rounded-lg border bg-card p-6 shadow-lg',
+        className
+      )}
       onClick={(e) => e.stopPropagation()}
     >
       {children}
