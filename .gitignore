@@ -1,6 +1,8 @@
 *.pem
 server.log
 .DS_Store
+*.log
+scripts/screenshot/*.png
 
 # Dependencies
 node_modules/
