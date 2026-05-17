@@ -24,9 +24,9 @@ export function Sheet({ open, onOpenChange, children }: SheetProps) {
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-50 bg-black/80" onClick={() => onOpenChange(false)} />
+      <div className="fixed inset-0 z-[1000] bg-black/80" onClick={() => onOpenChange(false)} />
       {/* Content */}
-      <div className="fixed inset-y-0 left-0 z-50 w-3/4 max-w-sm animate-in slide-in-from-left">
+      <div className="fixed inset-y-0 left-0 z-[1001] w-3/4 max-w-sm animate-in slide-in-from-left">
         {children}
       </div>
     </>
