@@ -216,7 +216,7 @@ export function MapPage() {
       <div className="absolute bottom-4 left-4 z-[1000]">
         <button
           onClick={() => setDrawerOpen(true)}
-          className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-border bg-card text-card-foreground shadow-lg transition-colors hover:bg-accent"
+          className="relative z-[1001] flex h-[52px] w-[52px] items-center justify-center rounded-full border border-border bg-card text-card-foreground shadow-lg transition-colors hover:bg-accent"
           aria-label="Menu"
         >
           <svg
