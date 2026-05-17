@@ -30,10 +30,22 @@ export function TrackPage() {
 
   const [showRaw, setShowRaw] = useState(true);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const store = useStore();
 
   const stats = getStats();
+
+  // Check for autostart query param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('autostart') === '1' && status === 'idle' && !hasInProgressTrack) {
+      // Start tracking immediately
+      start();
+      // Clean up the URL
+      window.history.replaceState({}, '', location.split('?')[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
 
   // Check for in-progress track on mount
   useEffect(() => {
@@ -179,18 +191,18 @@ export function TrackPage() {
         </div>
       )}
 
+      {/* Recording indicator (bottom-right) */}
+      {status === 'recording' && (
+        <div className="absolute bottom-4 right-4 z-[1000] flex items-center gap-2 rounded-full border border-red-500 bg-card px-4 py-2 shadow-lg">
+          <div className="h-3 w-3 animate-pulse rounded-full bg-red-500" />
+          <span className="text-sm font-medium text-red-500">Recording</span>
+        </div>
+      )}
+
       {/* Bottom panel */}
       <div className="absolute bottom-3 left-3 right-3 z-[1000]">
         <Card>
           <CardContent className="p-4">
-            {/* Recording indicator */}
-            {status === 'recording' && (
-              <div className="mb-3 flex items-center gap-2">
-                <div className="h-3 w-3 animate-pulse rounded-full bg-red-500" />
-                <span className="text-sm font-medium text-red-500">Recording</span>
-              </div>
-            )}
-
             {/* Stats */}
             <div className="mb-4 grid grid-cols-2 gap-2 text-sm">
               <div>

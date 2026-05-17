@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import L from 'leaflet';
 import { toast } from 'sonner';
+import { useLocation } from 'wouter';
 import { MapCanvas } from '../components/MapCanvas';
 import { Button } from '../components/ui/button';
 import { routeBetween } from '../lib/brouter';
@@ -13,8 +14,31 @@ export function MapPage() {
   const [waypoints, setWaypoints] = useState<[number, number][]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [drawing, setDrawing] = useState(false);
+  const [trackingInProgress, setTrackingInProgress] = useState(false);
 
   const store = useStore();
+  const [, navigate] = useLocation();
+
+  // Check if tracking is in progress
+  useEffect(() => {
+    const checkTracking = () => {
+      const saved = localStorage.getItem('track_in_progress_v1');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setTrackingInProgress(parsed.status === 'recording' || parsed.status === 'paused');
+        } catch {
+          setTrackingInProgress(false);
+        }
+      } else {
+        setTrackingInProgress(false);
+      }
+    };
+
+    checkTracking();
+    const interval = setInterval(checkTracking, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const stats = calculateStats(segments);
 
@@ -105,6 +129,14 @@ export function MapPage() {
     }
   };
 
+  const handleStartTracking = () => {
+    if (trackingInProgress) {
+      navigate('/track');
+    } else {
+      navigate('/track?autostart=1');
+    }
+  };
+
   const statsText = () => {
     if (waypoints.length === 0) {
       return 'Tap the map to start drawing.';
@@ -156,18 +188,28 @@ export function MapPage() {
           </div>
         )}
 
-        {/* FAB */}
-        <button
-          onClick={handleToggleMode}
-          className={`flex h-[52px] w-[52px] items-center justify-center rounded-full border text-3xl shadow-lg transition-colors ${
-            mode === 'draw'
-              ? 'border-primary bg-primary text-primary-foreground'
-              : 'border-border bg-card text-card-foreground hover:bg-accent'
-          }`}
-          title={mode === 'draw' ? 'Exit draw mode' : 'Draw path'}
-        >
-          {mode === 'draw' ? '×' : '+'}
-        </button>
+        {/* Control buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleStartTracking}
+            className="flex h-[52px] items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-medium shadow-lg transition-colors hover:bg-accent"
+            title={trackingInProgress ? 'Go to tracking' : 'Start tracking'}
+          >
+            <span className="text-xl">🚶</span>
+            {trackingInProgress ? 'Tracking…' : 'Start tracking'}
+          </button>
+          <button
+            onClick={handleToggleMode}
+            className={`flex h-[52px] w-[52px] items-center justify-center rounded-full border text-3xl shadow-lg transition-colors ${
+              mode === 'draw'
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border bg-card text-card-foreground hover:bg-accent'
+            }`}
+            title={mode === 'draw' ? 'Exit draw mode' : 'Draw path'}
+          >
+            {mode === 'draw' ? '×' : '+'}
+          </button>
+        </div>
       </div>
     </>
   );
