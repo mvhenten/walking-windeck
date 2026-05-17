@@ -74,6 +74,7 @@ export function RoutesPage() {
           waypoints={[]}
           segments={[]}
           savedRoute={selectedRoute.coords.map((c) => [c[0], c[1]])}
+          savedRouteKind={selectedRoute.kind ?? 'drawn'}
         />
         <div className="absolute top-20 left-3 right-3 z-[1000]">
           <Card>
@@ -116,7 +117,12 @@ export function RoutesPage() {
           {routes.map((route) => (
             <Card key={route.id}>
               <CardHeader>
-                <CardTitle className="text-base">{route.name}</CardTitle>
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-base">{route.name}</CardTitle>
+                  <span className="text-xs rounded-full px-2 py-1 bg-accent text-accent-foreground whitespace-nowrap">
+                    {(route as { kind?: string }).kind === 'tracked' ? '🚶 tracked' : '✏ drawn'}
+                  </span>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="mb-3 text-xs text-muted-foreground">

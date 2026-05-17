@@ -11,6 +11,7 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import type { TrackPoint } from '../hooks/useTracker';
 
 // Fix Leaflet icon issue with bundlers
 delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
@@ -29,6 +30,9 @@ interface MapCanvasProps {
     coords: [number, number, number | null][]; // [lat, lng, ele]
   }>;
   savedRoute: [number, number][] | null; // [lat, lng]
+  savedRouteKind?: 'drawn' | 'tracked';
+  trackingMode?: boolean;
+  trackSegments?: Array<{ point: TrackPoint }>;
 }
 
 function LocateControl() {
@@ -102,6 +106,9 @@ export function MapCanvas({
   waypoints,
   segments,
   savedRoute,
+  savedRouteKind = 'drawn',
+  trackingMode = false,
+  trackSegments = [],
 }: MapCanvasProps) {
   return (
     <MapContainer center={center} zoom={zoom} zoomControl={true} className="absolute inset-0">
@@ -164,24 +171,67 @@ export function MapCanvas({
         />
       ))}
 
-      {segments.map((seg, i) => (
-        <Polyline
-          key={`seg-${i}`}
-          positions={seg.coords.map((c) => [c[0], c[1]])}
-          pathOptions={{
-            color: '#b48cf2',
-            weight: 5,
-            opacity: 0.9,
-          }}
-        />
-      ))}
+      {/* Draw mode segments */}
+      {!trackingMode &&
+        segments.map((seg, i) => (
+          <Polyline
+            key={`seg-${i}`}
+            positions={seg.coords.map((c) => [c[0], c[1]])}
+            pathOptions={{
+              color: '#b48cf2',
+              weight: 5,
+              opacity: 0.9,
+            }}
+          />
+        ))}
+
+      {/* Tracking mode segments */}
+      {trackingMode && trackSegments.length > 1 && (
+        <>
+          {/* GPS segments */}
+          <Polyline
+            positions={trackSegments
+              .filter((s) => s.point.source === 'gps')
+              .map((s) => [s.point.lat, s.point.lng])}
+            pathOptions={{
+              color: '#ff8c00',
+              weight: 5,
+              opacity: 0.9,
+            }}
+          />
+          {/* Gap-fill segments with highlight */}
+          <Polyline
+            positions={trackSegments
+              .filter((s) => s.point.source === 'gap-fill')
+              .map((s) => [s.point.lat, s.point.lng])}
+            pathOptions={{
+              color: '#ff8c00',
+              weight: 6,
+              opacity: 1,
+              dashArray: undefined,
+            }}
+          />
+          {/* Gap-straight segments (dashed) */}
+          <Polyline
+            positions={trackSegments
+              .filter((s) => s.point.source === 'gap-straight')
+              .map((s) => [s.point.lat, s.point.lng])}
+            pathOptions={{
+              color: '#ff8c00',
+              weight: 5,
+              opacity: 0.7,
+              dashArray: '10, 10',
+            }}
+          />
+        </>
+      )}
 
       {/* Saved route */}
       {savedRoute && (
         <Polyline
           positions={savedRoute}
           pathOptions={{
-            color: '#7cc4ff',
+            color: savedRouteKind === 'tracked' ? '#ff8c00' : '#7cc4ff',
             weight: 5,
             opacity: 0.9,
           }}
