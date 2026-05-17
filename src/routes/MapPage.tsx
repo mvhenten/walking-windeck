@@ -1,12 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import L from 'leaflet';
 import { toast } from 'sonner';
-import { useLocation } from 'wouter';
 import { MapCanvas } from '../components/MapCanvas';
+import { NavDrawer } from '../components/NavDrawer';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../components/ui/dialog';
 import { routeBetween } from '../lib/brouter';
 import { calculateStats, formatDistance } from '../lib/stats';
 import { useStore } from '../hooks/useStore';
+import { useTrackerContext } from '../contexts/TrackerContext';
 import { Segment, SavedRoute } from '../types';
 
 export function MapPage() {
@@ -14,31 +25,12 @@ export function MapPage() {
   const [waypoints, setWaypoints] = useState<[number, number][]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [drawing, setDrawing] = useState(false);
-  const [trackingInProgress, setTrackingInProgress] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
 
   const store = useStore();
-  const [, navigate] = useLocation();
-
-  // Check if tracking is in progress
-  useEffect(() => {
-    const checkTracking = () => {
-      const saved = localStorage.getItem('track_in_progress_v1');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          setTrackingInProgress(parsed.status === 'recording' || parsed.status === 'paused');
-        } catch {
-          setTrackingInProgress(false);
-        }
-      } else {
-        setTrackingInProgress(false);
-      }
-    };
-
-    checkTracking();
-    const interval = setInterval(checkTracking, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const tracker = useTrackerContext();
 
   const stats = calculateStats(segments);
 
@@ -118,6 +110,12 @@ export function MapPage() {
   };
 
   const handleToggleMode = () => {
+    // If tracking, open the drawer instead
+    if (tracker.status === 'recording' || tracker.status === 'paused') {
+      setDrawerOpen(true);
+      return;
+    }
+
     if (mode === 'normal') {
       setMode('draw');
       toast.info('Path mode: tap to add points');
@@ -129,12 +127,61 @@ export function MapPage() {
     }
   };
 
-  const handleStartTracking = () => {
-    if (trackingInProgress) {
-      navigate('/track');
-    } else {
-      navigate('/track?autostart=1');
+  const handleStopRequested = () => {
+    tracker.stop();
+    // Generate default name
+    const now = new Date();
+    const defaultName = `Hike ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    setSaveName(defaultName);
+    setSaveDialogOpen(true);
+  };
+
+  const handleSaveTrack = async () => {
+    if (!saveName.trim()) {
+      toast.error('Please enter a name');
+      return;
     }
+
+    const coords: [number, number, number | null][] = tracker.points.map((p) => [
+      p.lat,
+      p.lng,
+      p.ele,
+    ]);
+
+    const trackerStats = tracker.getStats();
+
+    const payload: SavedRoute = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: saveName.trim(),
+      created: new Date().toISOString(),
+      kind: 'tracked',
+      waypoints: [],
+      coords,
+      snappedCoordinates: tracker.snappedCoordinates ?? undefined,
+      stats: {
+        dist: trackerStats.distance,
+        ascent: trackerStats.ascent,
+        descent: trackerStats.descent,
+      },
+    };
+
+    try {
+      await store.save(payload);
+      toast.success(`Saved: ${saveName}`);
+      tracker.discard();
+      setSaveDialogOpen(false);
+      setSaveName('');
+    } catch (e) {
+      toast.error(`Failed to save: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleDiscardTrack = () => {
+    if (!confirm("Discard this tracked hike? You can't undo this.")) return;
+    tracker.discard();
+    setSaveDialogOpen(false);
+    setSaveName('');
+    toast.info('Discarded');
   };
 
   const statsText = () => {
@@ -147,6 +194,11 @@ export function MapPage() {
     return `${formatDistance(stats.dist)} · ↑ ${Math.round(stats.ascent)} m · ↓ ${Math.round(stats.descent)} m · ${waypoints.length} pts`;
   };
 
+  const isTracking = tracker.status === 'recording' || tracker.status === 'paused';
+
+  // Prepare track data for MapCanvas
+  const trackSegments = tracker.points.map((p) => ({ point: p }));
+
   return (
     <>
       <MapCanvas
@@ -156,12 +208,37 @@ export function MapPage() {
         waypoints={waypoints}
         segments={segments}
         savedRoute={null}
+        trackingMode={isTracking}
+        trackSegments={trackSegments}
       />
 
-      {/* Bottom-left controls */}
-      <div className="absolute bottom-3 left-3 z-[1000] flex max-w-[calc(100vw-24px)] flex-col gap-2">
-        {/* Draw panel */}
-        {mode === 'draw' && (
+      {/* Bottom-left: hamburger button */}
+      <div className="absolute bottom-4 left-4 z-[1000]">
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-border bg-card text-card-foreground shadow-lg transition-colors hover:bg-accent"
+          aria-label="Menu"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      {/* Draw mode panel (above hamburger) */}
+      {mode === 'draw' && !isTracking && (
+        <div className="absolute bottom-20 left-4 z-[1000] max-w-[calc(100vw-32px)]">
           <div className="rounded-lg border bg-card p-3 shadow-lg">
             <div className="mb-3 text-sm">{drawing ? 'Routing…' : statsText()}</div>
             <div className="flex flex-wrap gap-2">
@@ -186,31 +263,72 @@ export function MapPage() {
               </Button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Control buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleStartTracking}
-            className="flex h-[52px] items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-medium shadow-lg transition-colors hover:bg-accent"
-            title={trackingInProgress ? 'Go to tracking' : 'Start tracking'}
-          >
-            <span className="text-xl">🚶</span>
-            {trackingInProgress ? 'Tracking…' : 'Start tracking'}
-          </button>
-          <button
-            onClick={handleToggleMode}
-            className={`flex h-[52px] w-[52px] items-center justify-center rounded-full border text-3xl shadow-lg transition-colors ${
-              mode === 'draw'
+      {/* Bottom-right: "+" FAB (context-aware) */}
+      <div className="absolute bottom-4 right-4 z-[1000]">
+        <button
+          onClick={handleToggleMode}
+          className={`relative flex h-[52px] w-[52px] items-center justify-center rounded-full border text-3xl shadow-lg transition-colors ${
+            isTracking
+              ? 'border-red-500 bg-card text-red-500'
+              : mode === 'draw'
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border bg-card text-card-foreground hover:bg-accent'
-            }`}
-            title={mode === 'draw' ? 'Exit draw mode' : 'Draw path'}
-          >
-            {mode === 'draw' ? '×' : '+'}
-          </button>
-        </div>
+          }`}
+          title={
+            isTracking ? 'View tracking controls' : mode === 'draw' ? 'Exit draw mode' : 'Draw path'
+          }
+        >
+          {/* Pulsing ring when recording */}
+          {tracker.status === 'recording' && (
+            <span className="absolute inset-0 animate-pulse rounded-full border-2 border-red-500 opacity-75" />
+          )}
+          {/* Icon */}
+          {isTracking ? '●' : mode === 'draw' ? '×' : '+'}
+        </button>
       </div>
+
+      {/* Nav drawer */}
+      <NavDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onStopRequested={handleStopRequested}
+      />
+
+      {/* Save track dialog */}
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save tracked hike</DialogTitle>
+            <DialogDescription>Give your tracked hike a name to save it.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="track-name">Name</Label>
+              <Input
+                id="track-name"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder="Hike name"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSaveTrack();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleDiscardTrack} variant="destructive">
+              Discard
+            </Button>
+            <Button onClick={handleSaveTrack}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
