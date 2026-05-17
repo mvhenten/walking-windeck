@@ -2,9 +2,7 @@
 
 Mobile-friendly hiking map for the hills around Dreisel / Windeck (and anywhere else).
 
-> **Note:** The GitHub repository is named `matshikes` for historical reasons. The app's public-facing name is **WalkingWindeck**.
-
-**Live:** https://mvhenten.github.io/matshikes/
+**Live:** https://mvhenten.github.io/walking-windeck/
 
 - OpenTopoMap base with contours + hill shading
 - Waymarked hiking trails overlay
@@ -36,7 +34,7 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/deploy.yml`.
 
 One-time setup: repo Settings → Pages → Source = **GitHub Actions**.
 
-Vite `base` is set to `/matshikes/` to match the repo name.
+Vite `base` is set to `/walking-windeck/` to match the repo name.
 
 ## Project layout
 

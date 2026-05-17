@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
 export default defineConfig({
-  base: '/matshikes/',
+  base: '/walking-windeck/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -29,7 +29,7 @@ export default defineConfig({
         start_url: '.',
         icons: [
           {
-            src: '/matshikes/icon.svg',
+            src: '/walking-windeck/icon.svg',
             sizes: 'any',
             type: 'image/svg+xml',
             purpose: 'any maskable',
