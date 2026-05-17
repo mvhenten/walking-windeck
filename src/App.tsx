@@ -2,6 +2,7 @@ import { Router, Route, Switch } from 'wouter';
 import { Toaster } from 'sonner';
 import { AppShell } from './components/AppShell';
 import { MapPage } from './routes/MapPage';
+import { TrackPage } from './routes/TrackPage';
 import { RoutesPage } from './routes/RoutesPage';
 import { SettingsPage } from './routes/SettingsPage';
 import { useAuth } from './hooks/useAuth';
@@ -17,6 +18,7 @@ export function App() {
       <AppShell authenticated={authenticated}>
         <Switch>
           <Route path="/" component={MapPage} />
+          <Route path="/track" component={TrackPage} />
           <Route path="/routes" component={RoutesPage} />
           <Route path="/settings" component={SettingsPage} />
           <Route>404 - Not Found</Route>

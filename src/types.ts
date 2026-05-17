@@ -11,12 +11,16 @@ export interface Segment {
   descent: number;
 }
 
+export type RouteKind = 'drawn' | 'tracked';
+
 export interface SavedRoute {
   id: string;
   name: string;
   created: string;
+  kind?: RouteKind;
   waypoints: [number, number][]; // [lng, lat]
   coords: [number, number, number | null][]; // [lat, lng, ele]
+  snappedCoordinates?: [number, number][]; // [lng, lat] - for tracked routes
   stats: RouteStats;
 }
 

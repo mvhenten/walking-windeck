@@ -15,6 +15,7 @@ export function AppShell({ authenticated, children }: AppShellProps) {
 
   const navItems = [
     { path: '/', label: 'Map' },
+    { path: '/track', label: 'Track' },
     { path: '/routes', label: 'Routes' },
     { path: '/settings', label: 'Settings' },
   ];
