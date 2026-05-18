@@ -39,10 +39,12 @@ function LocateControl() {
   const map = useMap();
 
   useEffect(() => {
+    let marker: L.CircleMarker | null = null;
+    let accuracyCircle: L.Circle | null = null;
+    let watching = false;
+
     const LocateControl = L.Control.extend({
-      options: {
-        position: 'topleft',
-      },
+      options: { position: 'topleft' },
       onAdd: function (mapInstance: L.Map) {
         const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
         const link = L.DomUtil.create('a', '', div);
@@ -57,11 +59,12 @@ function LocateControl() {
 
         L.DomEvent.on(link, 'click', (e: Event) => {
           L.DomEvent.preventDefault(e);
-          mapInstance.locate({
-            setView: true,
-            maxZoom: 16,
-            enableHighAccuracy: true,
-          });
+          if (!watching) {
+            mapInstance.locate({ watch: true, enableHighAccuracy: true });
+            watching = true;
+          } else if (marker) {
+            mapInstance.setView(marker.getLatLng(), Math.max(mapInstance.getZoom(), 16));
+          }
         });
 
         return div;
@@ -71,16 +74,39 @@ function LocateControl() {
     const locateControl = new LocateControl();
     locateControl.addTo(map);
 
-    map.on('locationfound', (e: L.LocationEvent) => {
-      L.circleMarker(e.latlng, {
-        radius: 8,
-        color: '#7cc4ff',
-        fillColor: '#7cc4ff',
-        fillOpacity: 0.8,
-      }).addTo(map);
-    });
+    const onLocation = (e: L.LocationEvent) => {
+      if (!marker) {
+        marker = L.circleMarker(e.latlng, {
+          radius: 8,
+          color: '#7cc4ff',
+          fillColor: '#7cc4ff',
+          fillOpacity: 0.8,
+        }).addTo(map);
+        map.setView(e.latlng, Math.max(map.getZoom(), 16));
+      } else {
+        marker.setLatLng(e.latlng);
+      }
+
+      if (!accuracyCircle) {
+        accuracyCircle = L.circle(e.latlng, {
+          radius: e.accuracy,
+          color: '#7cc4ff',
+          fillColor: '#7cc4ff',
+          fillOpacity: 0.1,
+          weight: 1,
+        }).addTo(map);
+      } else {
+        accuracyCircle.setLatLng(e.latlng).setRadius(e.accuracy);
+      }
+    };
+
+    map.on('locationfound', onLocation);
 
     return () => {
+      map.off('locationfound', onLocation);
+      map.stopLocate();
+      marker?.remove();
+      accuracyCircle?.remove();
       locateControl.remove();
     };
   }, [map]);
