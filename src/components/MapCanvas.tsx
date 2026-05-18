@@ -88,12 +88,29 @@ function LocateControl() {
   return null;
 }
 
+function showElevationPopup(map: L.Map, latlng: L.LatLng) {
+  const { lat, lng } = latlng;
+  const coords = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  const popup = L.popup().setLatLng(latlng).setContent('Looking up elevation…').openOn(map);
+  fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`)
+    .then((r) => r.json())
+    .then((j: { results?: Array<{ elevation?: number }> }) => {
+      const ele = j?.results?.[0]?.elevation;
+      popup.setContent(ele != null ? `<b>${Math.round(ele)} m</b><br>${coords}` : coords);
+    })
+    .catch(() => {
+      popup.setContent(coords);
+    });
+}
+
 function MapClickHandler({ onClick }: { onClick?: (latlng: L.LatLng) => void }) {
-  useMapEvents({
+  const map = useMapEvents({
     click: (e) => {
       if (onClick) {
         onClick(e.latlng);
+        return;
       }
+      showElevationPopup(map, e.latlng);
     },
   });
   return null;
