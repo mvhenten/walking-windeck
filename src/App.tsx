@@ -21,7 +21,14 @@ export function App() {
             <Route>404 - Not Found</Route>
           </Switch>
         </AppShell>
-        <Toaster position="top-center" theme="dark" />
+        <Toaster
+          position="top-center"
+          theme="dark"
+          duration={Infinity}
+          closeButton
+          expand
+          visibleToasts={5}
+        />
       </TrackerProvider>
     </Router>
   );

@@ -415,7 +415,6 @@ export function useTracker() {
     setElapsedTime(0);
 
     localStorage.removeItem(TRACK_STORAGE_KEY);
-    toast.info('Track discarded');
   }, [releaseWakeLock]);
 
   // Snap to paths
