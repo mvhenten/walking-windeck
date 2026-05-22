@@ -54,7 +54,6 @@ export function MapPage() {
       const seg = await routeBetween(prev, lngLat);
       setSegments((s) => [...s, seg]);
       setWaypoints((w) => [...w, lngLat]);
-      toast.success('Point added');
     } catch (e) {
       toast.error(`Routing failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
@@ -100,7 +99,6 @@ export function MapPage() {
 
     try {
       await store.save(payload);
-      toast.success(`Saved: ${name}`);
       setWaypoints([]);
       setSegments([]);
       setMode('normal');
@@ -118,7 +116,6 @@ export function MapPage() {
 
     if (mode === 'normal') {
       setMode('draw');
-      toast.info('Path mode: tap to add points');
     } else {
       if (segments.length > 0 && !confirm('Exit without saving current path?')) return;
       setWaypoints([]);
@@ -167,7 +164,6 @@ export function MapPage() {
 
     try {
       await store.save(payload);
-      toast.success(`Saved: ${saveName}`);
       tracker.discard();
       setSaveDialogOpen(false);
       setSaveName('');
@@ -181,7 +177,6 @@ export function MapPage() {
     tracker.discard();
     setSaveDialogOpen(false);
     setSaveName('');
-    toast.info('Discarded');
   };
 
   const statsText = () => {

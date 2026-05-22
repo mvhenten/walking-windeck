@@ -10,7 +10,6 @@ export function SettingsPage() {
   const handleSignIn = async () => {
     try {
       await signIn();
-      toast.success('Signed in to Google Drive');
     } catch (e) {
       toast.error(`Sign-in failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
@@ -18,7 +17,6 @@ export function SettingsPage() {
 
   const handleSignOut = () => {
     signOut();
-    toast.success('Signed out');
   };
 
   return (
