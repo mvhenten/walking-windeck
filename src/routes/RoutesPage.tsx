@@ -41,9 +41,6 @@ export function RoutesPage() {
         return;
       }
       setSelectedRoute(route);
-      toast.success(
-        `${route.name} · ${formatDistance(route.stats.dist)} · ↑${Math.round(route.stats.ascent)} m`
-      );
     } catch (e) {
       toast.error(`Failed to load route: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
@@ -59,7 +56,6 @@ export function RoutesPage() {
         setSelectedRoute(null);
       }
       await loadRoutes();
-      toast.success('Deleted');
     } catch (e) {
       toast.error(`Failed to delete: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }

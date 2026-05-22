@@ -319,8 +319,6 @@ export function useTracker() {
         timeout: 30000,
       }
     );
-
-    toast.success('Tracking started');
   }, [acquireWakeLock, handlePosition, handleError]);
 
   // Pause tracking
@@ -340,7 +338,6 @@ export function useTracker() {
     }
 
     releaseWakeLock();
-    toast.info('Tracking paused');
   }, [state.status, releaseWakeLock]);
 
   // Resume tracking
@@ -368,8 +365,6 @@ export function useTracker() {
         timeout: 30000,
       }
     );
-
-    toast.success('Tracking resumed');
   }, [state.status, state.pausedAt, acquireWakeLock, handlePosition, handleError]);
 
   // Stop tracking
@@ -388,7 +383,6 @@ export function useTracker() {
 
     releaseWakeLock();
     lastPointRef.current = null;
-    toast.info('Tracking stopped');
   }, [state.status, releaseWakeLock]);
 
   // Discard track
@@ -471,8 +465,6 @@ export function useTracker() {
         ...prev,
         snappedCoordinates: allCoords,
       }));
-
-      toast.success('Snapped to paths');
     } catch (e) {
       toast.error(`Failed to snap: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
