@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useLocation } from 'wouter';
 import L from 'leaflet';
 import { toast } from 'sonner';
 import { MapCanvas } from '../components/MapCanvas';
@@ -31,8 +32,25 @@ export function MapPage() {
 
   const store = useStore();
   const tracker = useTrackerContext();
+  const [location, navigate] = useLocation();
 
   const stats = calculateStats(segments);
+
+  // Parse `?focus=lat,lng&name=...` from the URL; null if absent/invalid.
+  const focus = useMemo<{ lat: number; lng: number; name: string } | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const focusParam = params.get('focus');
+    const nameParam = params.get('name');
+    if (!focusParam || !nameParam) return null;
+    const [latStr, lngStr] = focusParam.split(',');
+    if (!latStr || !lngStr) return null;
+    const lat = Number(latStr);
+    const lng = Number(lngStr);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng, name: nameParam };
+    // `location` from wouter changes when the URL changes; recompute then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
 
   const handleMapClick = async (latlng: L.LatLng) => {
     if (mode !== 'draw' || drawing) return;
@@ -205,7 +223,21 @@ export function MapPage() {
         savedRoute={null}
         trackingMode={isTracking}
         trackSegments={trackSegments}
+        {...(focus ? { focusMarker: { lat: focus.lat, lng: focus.lng, name: focus.name } } : {})}
       />
+
+      {/* Top-center: "Back to results" pill (only in search preview mode) */}
+      {focus && (
+        <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2">
+          <button
+            onClick={() => navigate('/search')}
+            className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm text-card-foreground shadow-lg"
+          >
+            <span aria-hidden="true">←</span>
+            <span className="max-w-[60vw] truncate">{focus.name}</span>
+          </button>
+        </div>
+      )}
 
       {/* Bottom-left: hamburger button */}
       <div className="absolute bottom-4 left-4 z-[1000]">
