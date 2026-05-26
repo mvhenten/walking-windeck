@@ -99,6 +99,20 @@ export default defineConfig({
               },
             },
           },
+          {
+            urlPattern: /^https:\/\/nominatim\.openstreetmap\.org\/.*/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'nominatim-geocode',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24, // 1 day
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
         ],
       },
     }),

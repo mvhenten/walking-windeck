@@ -131,6 +131,16 @@ export function NavDrawer({ open, onOpenChange, onStopRequested }: NavDrawerProp
                 Map
               </a>
             </Link>
+            <Link href="/search">
+              <a
+                className={`block rounded-md px-4 py-3 text-sm font-medium transition-colors hover:bg-accent ${
+                  location.startsWith('/search') ? 'bg-accent' : ''
+                }`}
+                onClick={() => onOpenChange(false)}
+              >
+                Search
+              </a>
+            </Link>
             <Link href="/routes">
               <a
                 className={`block rounded-md px-4 py-3 text-sm font-medium transition-colors hover:bg-accent ${

@@ -6,6 +6,7 @@ import {
   ScaleControl,
   Polyline,
   CircleMarker,
+  Popup,
   useMap,
   useMapEvents,
 } from 'react-leaflet';
@@ -33,6 +34,7 @@ interface MapCanvasProps {
   savedRouteKind?: 'drawn' | 'tracked';
   trackingMode?: boolean;
   trackSegments?: Array<{ point: TrackPoint }>;
+  focusMarker?: { lat: number; lng: number; name?: string };
 }
 
 function LocateControl() {
@@ -129,6 +131,14 @@ function showElevationPopup(map: L.Map, latlng: L.LatLng) {
     });
 }
 
+function FocusMarkerHandler({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 13));
+  }, [map, lat, lng]);
+  return null;
+}
+
 function MapClickHandler({ onClick }: { onClick?: (latlng: L.LatLng) => void }) {
   const map = useMapEvents({
     click: (e) => {
@@ -152,6 +162,7 @@ export function MapCanvas({
   savedRouteKind = 'drawn',
   trackingMode = false,
   trackSegments = [],
+  focusMarker,
 }: MapCanvasProps) {
   return (
     <MapContainer center={center} zoom={zoom} zoomControl={true} className="absolute inset-0">
@@ -266,6 +277,24 @@ export function MapCanvas({
               dashArray: '10, 10',
             }}
           />
+        </>
+      )}
+
+      {focusMarker && (
+        <>
+          <FocusMarkerHandler lat={focusMarker.lat} lng={focusMarker.lng} />
+          <CircleMarker
+            center={[focusMarker.lat, focusMarker.lng]}
+            radius={9}
+            pathOptions={{
+              color: '#ffffff',
+              weight: 2,
+              fillColor: '#ef4444',
+              fillOpacity: 0.9,
+            }}
+          >
+            {focusMarker.name && <Popup>{focusMarker.name}</Popup>}
+          </CircleMarker>
         </>
       )}
 
